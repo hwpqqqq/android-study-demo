@@ -20,6 +20,8 @@
             </intent-filter>
         </activity>
         <service android:name=".MyService" />
+        <service android:name=".MessengerService"
+            />
 
 
         <!--        android:permission：是权限声明-->
