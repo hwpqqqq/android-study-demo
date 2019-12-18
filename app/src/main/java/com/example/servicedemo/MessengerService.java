@@ -40,23 +40,30 @@ public class MessengerService extends Service {
             super.handleMessage(msg);
             Log.d("qqq","接收到messenger发送的信息");
             if (msg.what==100) {
+                Log.d("qqq", Thread.currentThread().getName());
                 Bundle data = msg.getData();
                 String msg1 = data.getString("msg");
                 Context context = getApplicationContext();
                 Toast.makeText(MessengerService.this,msg1,Toast.LENGTH_LONG).show();
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        Log.d("qqq","messenger能创建子线程吗?");
-                        Message msg = new Message();
-                        Messenger messenger = msg.replyTo;
-                        try {
-                            messenger.send(Message.obtain(null, 1, 0, 0));
-                        } catch (RemoteException e) {
-                            e.printStackTrace();
+                // 接收到的还是在主线程中
+                Log.d("qqq", Thread.currentThread().getName()+"----service");
+                // 获取从activity发送的messenger里的msg携带的replyTo信息，通过msg.replyTo获取messenger对象，然后调用messenger.send发送消息给activity
+                final Messenger replyTo = msg.replyTo;
+                    new Timer().schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            try {
+                                Log.d("qqq", Thread.currentThread().getName()+"----timerTask");
+                                Message msg = Message.obtain(null, 1, 0, 0);
+                                Bundle bundle = new Bundle();
+                                bundle.putString("service_reply","hello i'm service");
+                                msg.setData(bundle);
+                                replyTo.send(msg);
+                            } catch (RemoteException e) {
+                                e.printStackTrace();
+                            }
                         }
-                    }
-                }).run();
+                    },3000);
             }
         }
     }

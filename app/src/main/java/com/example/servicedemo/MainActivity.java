@@ -4,6 +4,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -18,6 +20,10 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
     private Button mBtBind;
@@ -25,6 +31,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Button mBtAidl;
     private Context mContext;
     private Messenger mMessenger;
+    private Messenger mReceiveMessenger;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,7 +51,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     private void receiveMessenger() {
-        Messenger messenger = new Messenger(new receiveHandler());
+        mReceiveMessenger = new Messenger(new receiveHandler());
     }
 
     private void addListener() {
@@ -60,10 +67,36 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         mBtAidl = findViewById(R.id.bt_aidl);
     }
 
+    public static Intent createExplicitFromImplicitIntent(Context context, Intent implicitIntent) {
+        // Retrieve all services that can match the given intent
+        PackageManager pm = context.getPackageManager();
+        List<ResolveInfo> resolveInfo = pm.queryIntentServices(implicitIntent, 0);
+
+        // Make sure only one match was found
+        if (resolveInfo == null || resolveInfo.size() != 1) {
+            return null;
+        }
+
+        // Get component info and create ComponentName
+        ResolveInfo serviceInfo = resolveInfo.get(0);
+        String packageName = serviceInfo.serviceInfo.packageName;
+        String className = serviceInfo.serviceInfo.name;
+        ComponentName component = new ComponentName(packageName, className);
+
+        // Create a new intent. Use the old one for extras and such reuse
+        Intent explicitIntent = new Intent(implicitIntent);
+
+        // Set the component to be explicit
+        explicitIntent.setComponent(component);
+
+        return explicitIntent;
+    }
     @Override
     public void onClick(View v) {
         switch (v.getId()) {
             case R.id.bt_bind:
+                // 通过startService开启的服务开启后，activity和service是无法通讯的，所以要让两者通讯只能使用bind方式
+                // 同一进程中使用bind方式进行服务绑定，可以实现activity与service的通讯
                 mContext.bindService(new Intent(mContext, MyService.class), new ServiceConnection() {
                     @Override
                     public void onServiceConnected(ComponentName name, IBinder service) {
@@ -82,23 +115,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 }, BIND_AUTO_CREATE);
                 break;
             case R.id.bt_messenger:
-//                这种调用方式适用于service是跨进程的，而且只能说单线程的情况，才能实现通讯
+//               使用binder messenger方式开启的服务，service和activity可以跨进程通讯，但是只适用于单线程
                 mContext.bindService(new Intent(mContext, MessengerService.class), new ServiceConnection() {
                     @Override
                     public void onServiceConnected(ComponentName name, IBinder service) {
                         mMessenger = new Messenger(service);
-                        Message message =new Message();
-                        message.what=100;
+                        Log.d("qqq", Thread.currentThread().getName());
+                        Message message = new Message();
+                        message.what = 100;
                         Bundle bundle = new Bundle();
-                        bundle.putString("msg","messenger");
+                        bundle.putString("msg", "hello i'am activity");
                         message.setData(bundle);
+                        // replyto指定回复的接收messenger
+                        message.replyTo = mReceiveMessenger;
                         try {
                             mMessenger.send(message);
                         } catch (RemoteException e) {
                             e.printStackTrace();
                         }
-
-
                     }
 
                     @Override
@@ -108,6 +142,31 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 }, BIND_AUTO_CREATE);
                 break;
             case R.id.bt_aidl:
+                // aidlservice居然没有注册也能行。。。。
+                bindService(new Intent(mContext,AidlService.class), new ServiceConnection() {
+                    @Override
+                    public void onServiceConnected(ComponentName name, IBinder service) {
+                        UserBean userBean = null;
+                        try {
+                            final AidlService.MyBinder service1 = (AidlService.MyBinder) service;
+                            userBean = (service1).getUserBean();
+                            Toast.makeText(mContext,userBean.getName()+userBean.getAge(),Toast.LENGTH_LONG).show();
+                            new Timer().schedule(new TimerTask() {
+                                @Override
+                                public void run() {
+                                    service1.sayHello("hello aidl,i am activity");
+                                }
+                            },3000);
+                        } catch (RemoteException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                    @Override
+                    public void onServiceDisconnected(ComponentName name) {
+
+                    }
+                }, Context.BIND_AUTO_CREATE);
                 break;
         }
     }
@@ -119,8 +178,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         @Override
         public void handleMessage(@NonNull Message msg) {
             super.handleMessage(msg);
-            if (msg.what==1) {
-                Toast.makeText(mContext,"从MessengerService向这里传输的消息",Toast.LENGTH_LONG).show();
+            if (msg.what == 1) {
+                Bundle data = msg.getData();
+                String service_reply = data.getString("service_reply");
+                Toast.makeText(mContext, service_reply, Toast.LENGTH_LONG).show();
             }
         }
     }

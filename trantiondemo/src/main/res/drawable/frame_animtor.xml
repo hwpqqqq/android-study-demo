@@ -1,0 +1,7 @@
+<animation-list android:oneshot="false"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+<item android:drawable="@drawable/goods_one" android:duration="200"/>
+<item android:drawable="@drawable/googs_two" android:duration="200"/>
+<item android:drawable="@drawable/goods_three" android:duration="200"/>
+<item android:drawable="@drawable/goods_four" android:duration="200"/>
+</animation-list>
